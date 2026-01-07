@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <title>Login - Toko Online Sederhana</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1><a href="index.html" class="site-title">Toko Online Sederhana</a></h1>
+    <div class="header-actions">
+      <a href="index.html" class="back-link">← Kembali ke Toko</a>
+    </div>
+  </header>
+
+  <main class="auth-page">
+    <div class="auth-card">
+      <h2>Login</h2>
+      <input id="login-username" type="text" placeholder="Username" autocomplete="off">
+      <input id="login-password" type="password" placeholder="Password">
+      <div id="login-error" class="auth-error"></div>
+      <div class="auth-actions">
+        <button onclick="performLogin()" class="btn-primary">Login</button>
+        <button onclick="window.location.href='index.html'" class="btn-muted">Batal</button>
+      </div>
+      <p class="hint">Belum punya akun? <a href="register.html">Daftar di sini</a></p>
+      <p class="hint small">Contoh demo: admin / admin123</p>
+    </div>
+  </main>
+
+  <footer>
+    &copy; 2026 Toko Online Sederhana
+  </footer>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>

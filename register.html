@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <title>Daftar - Toko Online Sederhana</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1><a href="index.html" class="site-title">Toko Online Sederhana</a></h1>
+    <div class="header-actions">
+      <a href="index.html" class="back-link">← Kembali ke Toko</a>
+    </div>
+  </header>
+
+  <main class="auth-page">
+    <div class="auth-card">
+      <h2>Daftar Akun</h2>
+      <input id="register-username" type="text" placeholder="Username" autocomplete="off">
+      <input id="register-password" type="password" placeholder="Password (min 6 karakter)">
+      <input id="register-password2" type="password" placeholder="Konfirmasi Password">
+      <div id="register-error" class="auth-error"></div>
+      <div class="auth-actions">
+        <button onclick="performRegister()" class="btn-primary">Daftar & Login</button>
+        <button onclick="window.location.href='index.html'" class="btn-muted">Batal</button>
+      </div>
+      <p class="hint">Sudah punya akun? <a href="login.html">Masuk di sini</a></p>
+    </div>
+  </main>
+
+  <footer>
+    &copy; 2026 Toko Online Sederhana
+  </footer>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
