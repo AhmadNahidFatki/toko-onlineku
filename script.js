@@ -5,6 +5,8 @@
 // - Mengurangi penggunaan innerHTML di area sensitif untuk mencegah XSS (produk, detail, admin users, cart, orders).
 // - Validasi harga/stok diperbaiki (mengizinkan harga = 0, menolak negatif/NaN).
 // - Penanganan Cloudinary: cek konfigurasi sebelum upload dan pesan instruktif jika belum diset.
+// - Penambahan fitur pembayaran (client-side / simulasi): metode pembayaran, instruksi, paymentRef, status pembayaran, konfirmasi pembayaran.
+// - Penambahan fitur upload bukti pembayaran (upload ke Cloudinary jika tersedia, fallback dataURL) + admin approve/reject.
 
 // ---------------- initial data ----------------
 const initialProducts = [
@@ -39,6 +41,16 @@ async function uploadToCloudinary(file) {
   return data.secure_url;
 }
 
+// Fallback: baca file jadi dataURL (untuk demo jika Cloudinary tidak dikonfigurasi)
+function fileToDataURL(file){
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = (e) => reject(e);
+    fr.readAsDataURL(file);
+  });
+}
+
 // ---------------- storage helpers ----------------
 function getProductsFromStorage(){
   try { return JSON.parse(localStorage.getItem('products') || 'null') || null; } catch(e){ return null; }
@@ -51,7 +63,6 @@ function seedProductsIfNeeded(){ if (!getProductsFromStorage()){ saveProductsToS
 function getUsers(){
   const raw = localStorage.getItem('users');
   if (!raw) {
-    // Jangan buat admin default otomatis. Kembalikan object kosong supaya admin dibuat secara eksplisit.
     const empty = {};
     localStorage.setItem('users', JSON.stringify(empty));
     return empty;
@@ -61,7 +72,6 @@ function getUsers(){
     const out = {};
     Object.entries(parsed).forEach(([k,v])=>{
       if (typeof v === 'string') {
-        // old: password only
         out[k] = { password: v, role: (k === 'admin' ? 'admin' : 'user') };
       } else if (v && typeof v === 'object') {
         if (v.password && v.role) out[k] = { password: v.password, role: v.role };
@@ -117,6 +127,7 @@ function saveCartForUser(){ if (!currentUser) return; localStorage.setItem(`cart
 
 // orders per user
 function getOrdersForUser(){ if (!currentUser) return []; try { return JSON.parse(localStorage.getItem(`orders_${currentUser}`) || '[]'); } catch(e){ return []; } }
+function saveOrdersForUser(arr){ if (!currentUser) return; localStorage.setItem(`orders_${currentUser}`, JSON.stringify(arr)); }
 function saveOrderForUser(order){ if (!currentUser) return; const arr = getOrdersForUser(); arr.unshift(order); localStorage.setItem(`orders_${currentUser}`, JSON.stringify(arr)); }
 
 // utils
@@ -378,13 +389,353 @@ function updateCartUI(){ const countEl = document.getElementById('cart-count'), 
   list.appendChild(li);
   }); totalEl.textContent = 'Rp' + total.toLocaleString(); saveCartForUser(); }
 
-// ---------------- checkout & orders ----------------
+// ---------------- checkout & orders (dengan pembayaran sederhana) ----------------
 function proceedToCheckout(){ if (!currentUser){ localStorage.setItem('redirectAfterLogin','showCart'); window.location.href='login.html'; return; } if (!cart.length){ showToast('Keranjang kosong', 'error'); return; } window.location.href = 'checkout.html'; }
-function renderCheckoutItems(){ const el = document.getElementById('checkout-items'); if (!el) return; if (!currentUser){ window.location.href='login.html'; return; } el.innerHTML = ''; let total = 0; cart.forEach(i=>{ total += i.price * i.qty; const row = document.createElement('div'); row.textContent = `${i.name} x ${i.qty} — Rp${(i.price*i.qty).toLocaleString()}`; el.appendChild(row); }); const sub = document.createElement('div'); sub.style.marginTop = '8px'; sub.style.fontWeight = '700'; sub.textContent = `Subtotal: Rp${total.toLocaleString()}`; el.appendChild(sub); }
-function placeOrder(){ if (!currentUser){ window.location.href='login.html'; return; } if (!cart.length){ showToast('Keranjang kosong', 'error'); return; } const name = document.getElementById('addr-name').value.trim(); const phone = document.getElementById('addr-phone').value.trim(); const addr = document.getElementById('addr-address').value.trim(); const ship = document.getElementById('shipping-method').value; if (!name || !phone || !addr){ showToast('Lengkapi alamat pengiriman', 'error'); return; } for (const it of cart){ const available = getAvailableStock(it.id); if (it.qty > available){ showToast(`Stok tidak cukup untuk ${it.name}. Tersedia ${available}`, 'error'); return; } } let subtotal = cart.reduce((s,i)=>s+(i.price*i.qty),0); const shipCost = ship === 'yes' ? 15000 : 0; const total = subtotal + shipCost; const now = new Date().toISOString(); const order = { id: 'ORD' + Date.now(), date: now, items: cart.map(i=>({id:i.id,name:i.name,price:i.price,qty:i.qty})), subtotal, shipMethod:ship, shipCost, total, address:{name,phone,addr} }; const prods = getProducts(); order.items.forEach(it=>{ const idx = prods.findIndex(p=>p.id===it.id); if (idx !== -1) prods[idx].stock = Math.max(0, (prods[idx].stock||0) - it.qty); }); saveProductsToStorage(prods); saveOrderForUser(order); cart = []; saveCartForUser(); showToast('Pesanan berhasil dibuat', 'success'); setTimeout(()=> window.location.href = 'orders.html', 900); }
+function renderCheckoutItems(){ const el = document.getElementById('checkout-items'); if (!el) return; if (!currentUser){ window.location.href='login.html'; return; } el.innerHTML = ''; let subtotal = 0; cart.forEach(i=>{ subtotal += i.price * i.qty; const row = document.createElement('div'); row.textContent = `${i.name} x ${i.qty} — Rp${(i.price*i.qty).toLocaleString()}`; el.appendChild(row); }); const sub = document.createElement('div'); sub.style.marginTop = '8px'; sub.style.fontWeight = '700'; sub.id = 'checkout-subtotal'; sub.textContent = `Subtotal: Rp${subtotal.toLocaleString()}`; el.appendChild(sub);
 
-// ---------------- orders page ----------------
-function renderOrdersPage(){ if (!currentUser){ window.location.href='login.html'; return; } const wrap = document.getElementById('orders-list'); if (!wrap) return; const orders = getOrdersForUser(); if (!orders.length) { wrap.innerHTML = '<div>Tidak ada pesanan.</div>'; return; } wrap.innerHTML = ''; orders.forEach(o=>{ const div = document.createElement('div'); div.className = 'order-item'; const head = document.createElement('div'); head.style.display='flex'; head.style.justifyContent='space-between'; const strong = document.createElement('strong'); strong.textContent = o.id; const spanDate = document.createElement('span'); spanDate.textContent = new Date(o.date).toLocaleString(); head.appendChild(strong); head.appendChild(spanDate); div.appendChild(head); const itemsTitle = document.createElement('div'); itemsTitle.textContent = 'Items:'; div.appendChild(itemsTitle); const ul = document.createElement('ul'); o.items.forEach(it=>{ const li = document.createElement('li'); li.textContent = `${it.name} x ${it.qty} — Rp${(it.price*it.qty).toLocaleString()}`; ul.appendChild(li); }); div.appendChild(ul); const tot = document.createElement('div'); tot.textContent = `Total: Rp${o.total.toLocaleString()}`; div.appendChild(tot); const addrDiv = document.createElement('div'); addrDiv.textContent = `Alamat: ${o.address.name} — ${o.address.phone} — ${o.address.addr}`; div.appendChild(addrDiv); wrap.appendChild(div); }); }
+  // Show shipping & total preview (will be recalculated on payment selection/change)
+  const shipDiv = document.createElement('div'); shipDiv.id='checkout-shipping'; shipDiv.style.marginTop='6px'; el.appendChild(shipDiv);
+  const totDiv = document.createElement('div'); totDiv.id='checkout-total'; totDiv.style.marginTop='6px'; totDiv.style.fontWeight='800'; el.appendChild(totDiv);
+
+  // update totals based on shipping & payment selection
+  function updateTotals(){
+    const ship = document.getElementById('shipping-method') ? document.getElementById('shipping-method').value : 'reg';
+    const shipCost = ship === 'yes' ? 15000 : 0;
+    const total = subtotal + shipCost;
+    const shipEl = document.getElementById('checkout-shipping');
+    if (shipEl) shipEl.textContent = `Ongkir: Rp${shipCost.toLocaleString()}`;
+    const totEl = document.getElementById('checkout-total');
+    if (totEl) totEl.textContent = `Total: Rp${total.toLocaleString()}`;
+    // also update payment instruction preview
+    const pm = document.getElementById('payment-method') ? document.getElementById('payment-method').value : 'bank';
+    showPaymentPreview(pm, total);
+  }
+
+  const shipSel = document.getElementById('shipping-method'); if (shipSel) shipSel.addEventListener('change', updateTotals);
+  const paySel = document.getElementById('payment-method'); if (paySel) paySel.addEventListener('change', ()=> { updateTotals(); });
+
+  updateTotals();
+}
+function placeOrder(){ if (!currentUser){ window.location.href='login.html'; return; } if (!cart.length){ showToast('Keranjang kosong', 'error'); return; } const name = document.getElementById('addr-name').value.trim(); const phone = document.getElementById('addr-phone').value.trim(); const addr = document.getElementById('addr-address').value.trim(); const ship = document.getElementById('shipping-method').value; const payMethod = document.getElementById('payment-method') ? document.getElementById('payment-method').value : 'bank'; if (!name || !phone || !addr){ showToast('Lengkapi alamat pengiriman', 'error'); return; } for (const it of cart){ const available = getAvailableStock(it.id); if (it.qty > available){ showToast(`Stok tidak cukup untuk ${it.name}. Tersedia ${available}`, 'error'); return; } } let subtotal = cart.reduce((s,i)=>s+(i.price*i.qty),0); const shipCost = ship === 'yes' ? 15000 : 0; const total = subtotal + shipCost; const now = new Date().toISOString();
+
+  // prepare payment information (simulasi)
+  const payment = preparePaymentForOrder(payMethod, total);
+
+  const order = { id: 'ORD' + Date.now(), date: now, items: cart.map(i=>({id:i.id,name:i.name,price:i.price,qty:i.qty})), subtotal, shipMethod:ship, shipCost, total, address:{name,phone,addr}, paymentMethod: payMethod, paymentStatus: payment.status, paymentRef: payment.ref || '', paymentInstructions: payment.instructions || '', paymentProof: '', paymentProofStatus: '', paymentProofNote: '' };
+
+  // reduce stock
+  const prods = getProducts(); order.items.forEach(it=>{ const idx = prods.findIndex(p=>p.id===it.id); if (idx !== -1) prods[idx].stock = Math.max(0, (prods[idx].stock||0) - it.qty); }); saveProductsToStorage(prods);
+
+  // save order (per user)
+  saveOrderForUser(order);
+
+  // clear cart
+  cart = []; saveCartForUser();
+
+  // Show instruction or navigate
+  if (order.paymentStatus === 'pending'){
+    showToast('Pesanan dibuat. Periksa instruksi pembayaran di Riwayat Pesanan.', 'success');
+  } else if (order.paymentStatus === 'cod_pending'){
+    showToast('Pesanan dibuat (COD). Bayar saat pesanan diterima.', 'success');
+  } else if (order.paymentStatus === 'paid'){
+    showToast('Pesanan dibuat dan terbayar. Terima kasih!', 'success');
+  } else {
+    showToast('Pesanan dibuat', 'success');
+  }
+
+  setTimeout(()=> window.location.href = 'orders.html', 800);
+}
+
+// ---------------- payment helpers (simulasi) ----------------
+function rand(n){ return Math.floor(Math.random()*n); }
+function genPaymentRef(prefix='VA'){ return prefix + (Math.floor(Date.now()/1000) % 100000) + String(Math.floor(Math.random()*90000)+10000); }
+
+// prepare payment for order (client-side simulation)
+// returns { status: 'pending'|'paid'|'cod_pending', ref, instructions }
+function preparePaymentForOrder(method, total){
+  if (method === 'cod'){
+    return { status: 'cod_pending', ref: '', instructions: 'Bayar saat pesanan diterima (COD).' };
+  }
+  if (method === 'bank' || method === 'virtual'){
+    const ref = genPaymentRef('VA');
+    const instr = `Silakan transfer Rp${total.toLocaleString()} ke nomor Virtual Account: ${ref}. Setelah transfer, unggah bukti pembayaran atau klik "Konfirmasi Pembayaran" pada halaman Riwayat Pesanan. (Ini simulasi.)`;
+    return { status: 'pending', ref, instructions: instr };
+  }
+  if (method === 'qris'){
+    const ref = genPaymentRef('QR');
+    const instr = `Silakan scan QRIS (kode referensi ${ref}) dan bayar sebesar Rp${total.toLocaleString()}. Setelah bayar, unggah bukti pembayaran atau klik "Konfirmasi Pembayaran" pada halaman Riwayat Pesanan. (Ini simulasi.)`;
+    return { status: 'pending', ref, instructions: instr };
+  }
+  // default
+  return { status: 'pending', ref: '', instructions: 'Ikuti instruksi pembayaran.' };
+}
+
+// show payment preview on checkout page (informasional)
+function showPaymentPreview(method, total){
+  const el = document.getElementById('payment-instructions');
+  if (!el) return;
+  if (method === 'cod'){
+    el.textContent = 'Bayar dengan cash saat pesanan diterima (COD). Tidak perlu bayar sekarang.';
+    return;
+  }
+  if (method === 'bank' || method === 'virtual'){
+    const ref = genPaymentRef('VA'); // preview ref (not stored until order dibuat)
+    el.textContent = `Contoh instruksi: transfer Rp${total.toLocaleString()} ke Virtual Account ${ref}. (Ref contoh, akan digenerate saat pesanan dibuat.)`;
+    return;
+  }
+  if (method === 'qris'){
+    const ref = genPaymentRef('QR');
+    el.textContent = `Contoh instruksi QRIS: scan kode, bayar Rp${total.toLocaleString()}. Kode ref contoh: ${ref}.`;
+    return;
+  }
+  el.textContent = '';
+}
+
+// ---------------- orders page (dengan upload bukti pembayaran) ----------------
+function renderOrdersPage(){ if (!currentUser){ window.location.href='login.html'; return; } const wrap = document.getElementById('orders-list'); if (!wrap) return; const orders = getOrdersForUser(); if (!orders.length) { wrap.innerHTML = '<div>Tidak ada pesanan.</div>'; return; } wrap.innerHTML = ''; orders.forEach(o=>{ const div = document.createElement('div'); div.className = 'order-item'; const head = document.createElement('div'); head.style.display='flex'; head.style.justifyContent='space-between'; const strong = document.createElement('strong'); strong.textContent = o.id; const spanDate = document.createElement('span'); spanDate.textContent = new Date(o.date).toLocaleString(); head.appendChild(strong); head.appendChild(spanDate); div.appendChild(head); const itemsTitle = document.createElement('div'); itemsTitle.textContent = 'Items:'; div.appendChild(itemsTitle); const ul = document.createElement('ul'); o.items.forEach(it=>{ const li = document.createElement('li'); li.textContent = `${it.name} x ${it.qty} — Rp${(it.price*it.qty).toLocaleString()}`; ul.appendChild(li); }); div.appendChild(ul); const tot = document.createElement('div'); tot.textContent = `Total: Rp${o.total.toLocaleString()}`; div.appendChild(tot);
+
+  // payment info
+  const payDiv = document.createElement('div');
+  payDiv.style.marginTop = '8px';
+  const pm = document.createElement('div');
+  pm.textContent = `Metode Pembayaran: ${o.paymentMethod || 'N/A'}`;
+  payDiv.appendChild(pm);
+  const pst = document.createElement('div');
+  let pstText = o.paymentStatus || 'unknown';
+  if (pstText === 'pending') pstText = 'Menunggu pembayaran';
+  if (pstText === 'pending_confirmation') pstText = 'Menunggu konfirmasi bukti pembayaran';
+  if (pstText === 'cod_pending') pstText = 'Bayar saat diterima (COD)';
+  if (pstText === 'paid') pstText = 'Terbayar';
+  payDiv.appendChild(Object.assign(document.createElement('div'), { textContent: `Status Pembayaran: ${pstText}` }));
+
+  if (o.paymentRef) {
+    const pref = document.createElement('div');
+    pref.textContent = `Referensi: ${o.paymentRef}`;
+    pref.style.fontSize = '0.95em';
+    pref.style.color = '#333';
+    payDiv.appendChild(pref);
+  }
+  if (o.paymentInstructions){
+    const pinstr = document.createElement('div');
+    pinstr.textContent = o.paymentInstructions;
+    pinstr.style.fontSize = '0.95em';
+    pinstr.style.color = '#554';
+    pinstr.style.marginTop = '6px';
+    payDiv.appendChild(pinstr);
+  }
+  div.appendChild(payDiv);
+
+  // payment proof area
+  const proofDiv = document.createElement('div');
+  proofDiv.style.marginTop = '10px';
+  if (o.paymentProof){
+    const imgWrap = document.createElement('div');
+    imgWrap.style.display = 'flex';
+    imgWrap.style.gap = '8px';
+    imgWrap.style.alignItems = 'center';
+    const thumb = document.createElement('img');
+    thumb.src = o.paymentProof;
+    thumb.alt = 'Bukti pembayaran';
+    thumb.style.maxWidth = '140px';
+    thumb.style.maxHeight = '90px';
+    thumb.style.objectFit = 'cover';
+    thumb.style.borderRadius = '6px';
+    thumb.style.border = '1px solid #eef4f4';
+    imgWrap.appendChild(thumb);
+    const info = document.createElement('div');
+    info.style.fontSize = '0.95em';
+    info.style.color = '#333';
+    info.textContent = `Status bukti: ${o.paymentProofStatus || 'uploaded'}`;
+    imgWrap.appendChild(info);
+    proofDiv.appendChild(imgWrap);
+    // view full
+    const viewBtn = document.createElement('button');
+    viewBtn.textContent = 'Lihat Bukti';
+    viewBtn.style.marginTop = '8px';
+    viewBtn.addEventListener('click', ()=> window.open(o.paymentProof, '_blank'));
+    proofDiv.appendChild(viewBtn);
+  } else {
+    // show upload control only if order is pending payment or pending_confirmation
+    if (o.paymentStatus === 'pending' || o.paymentStatus === 'pending_confirmation'){
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.id = `proof-file-${o.id}`;
+      fileInput.style.display = 'inline-block';
+      proofDiv.appendChild(fileInput);
+      const upBtn = document.createElement('button');
+      upBtn.textContent = 'Upload Bukti';
+      upBtn.style.marginLeft = '8px';
+      upBtn.addEventListener('click', ()=> uploadPaymentProof(o.id));
+      proofDiv.appendChild(upBtn);
+      const note = document.createElement('div');
+      note.style.fontSize = '0.9em';
+      note.style.color = '#556';
+      note.style.marginTop = '6px';
+      note.textContent = 'Unggah bukti transfer (gambar). Jika Cloudinary belum dikonfigurasi, file disimpan secara lokal (dataURL).';
+      proofDiv.appendChild(note);
+    }
+  }
+  if (o.paymentProofStatus === 'rejected'){
+    const rejNote = document.createElement('div');
+    rejNote.style.color = '#b02';
+    rejNote.style.marginTop = '6px';
+    rejNote.textContent = `Bukti ditolak: ${o.paymentProofNote || 'tidak ada catatan'}`;
+    proofDiv.appendChild(rejNote);
+  }
+  div.appendChild(proofDiv);
+
+  // address
+  const addrDiv = document.createElement('div');
+  addrDiv.textContent = `Alamat: ${o.address.name} — ${o.address.phone} — ${o.address.addr}`;
+  div.appendChild(addrDiv);
+
+  // actions: jika belum dibayar dan bukan COD, pengguna bisa konfirmasi bayar (simulasi)
+  const actions = document.createElement('div');
+  actions.style.marginTop = '8px';
+  actions.style.display = 'flex';
+  actions.style.gap = '8px';
+
+  if (o.paymentStatus === 'pending'){
+    const confBtn = document.createElement('button');
+    confBtn.className = 'btn-primary';
+    confBtn.textContent = 'Konfirmasi Pembayaran';
+    confBtn.addEventListener('click', ()=> confirmPayment(o.id));
+    actions.appendChild(confBtn);
+  }
+  if (o.paymentStatus === 'cod_pending'){
+    const codBtn = document.createElement('button');
+    codBtn.className = 'btn-primary';
+    codBtn.textContent = 'Tandai Lunas (COD)';
+    codBtn.addEventListener('click', ()=> confirmPayment(o.id));
+    actions.appendChild(codBtn);
+  }
+
+  // Admin quick toggle paid/unpaid (jika admin)
+  if (isAdminUser()){
+    if (o.paymentProof && o.paymentProofStatus === 'uploaded'){
+      const approveBtn = document.createElement('button');
+      approveBtn.className = 'btn-primary';
+      approveBtn.textContent = 'Approve Bukti';
+      approveBtn.addEventListener('click', ()=> adminApproveProof(o.id));
+      actions.appendChild(approveBtn);
+
+      const rejectBtn = document.createElement('button');
+      rejectBtn.className = 'btn-danger';
+      rejectBtn.textContent = 'Reject Bukti';
+      rejectBtn.addEventListener('click', ()=> {
+        const note = prompt('Alasan penolakan (opsional):') || '';
+        adminRejectProof(o.id, note);
+      });
+      actions.appendChild(rejectBtn);
+    } else {
+      const adminBtn = document.createElement('button');
+      adminBtn.className = 'btn-muted';
+      adminBtn.textContent = (o.paymentStatus === 'paid') ? 'Tandai Belum Lunas' : 'Tandai Lunas';
+      adminBtn.addEventListener('click', ()=> adminTogglePaid(o.id));
+      actions.appendChild(adminBtn);
+    }
+  }
+
+  div.appendChild(actions);
+
+  wrap.appendChild(div);
+  }); }
+
+// unggah bukti pembayaran untuk pesanan saat ini (user)
+async function uploadPaymentProof(orderId){
+  if (!currentUser) { window.location.href = 'login.html'; return; }
+  const orders = getOrdersForUser();
+  const idx = orders.findIndex(o=>o.id===orderId);
+  if (idx === -1) { showToast('Pesanan tidak ditemukan', 'error'); return; }
+  const input = document.getElementById(`proof-file-${orderId}`);
+  if (!input || !input.files || !input.files[0]) { showToast('Pilih file bukti terlebih dahulu', 'error'); return; }
+  const file = input.files[0];
+  try {
+    showToast('Mengunggah bukti...', 'info');
+    let url = '';
+    if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET){
+      url = await uploadToCloudinary(file);
+    } else {
+      // fallback to dataURL (demo)
+      url = await fileToDataURL(file);
+    }
+    orders[idx].paymentProof = url;
+    orders[idx].paymentProofStatus = 'uploaded';
+    orders[idx].paymentProofNote = '';
+    // set overall payment status to pending confirmation if currently pending
+    if (orders[idx].paymentStatus === 'pending') orders[idx].paymentStatus = 'pending_confirmation';
+    saveOrdersForUser(orders);
+    showToast('Bukti berhasil diunggah. Menunggu konfirmasi.', 'success');
+    renderOrdersPage();
+  } catch(err){
+    console.error(err);
+    showToast('Gagal mengunggah bukti: ' + (err.message || err), 'error');
+  }
+}
+
+// konfirmasi pembayaran oleh user (simulasi)
+function confirmPayment(orderId){
+  if (!currentUser) return;
+  const orders = getOrdersForUser();
+  const idx = orders.findIndex(o=>o.id===orderId);
+  if (idx === -1) return;
+  if (!confirm('Konfirmasi pembayaran untuk pesanan ini? (Simulasi: ini akan menandai pesanan sebagai terbayar)')) return;
+  orders[idx].paymentStatus = 'paid';
+  orders[idx].paymentProofStatus = orders[idx].paymentProofStatus || 'n/a';
+  orders[idx].paidAt = new Date().toISOString();
+  saveOrdersForUser(orders);
+  showToast('Pembayaran dikonfirmasi (simulasi). Terima kasih!', 'success');
+  renderOrdersPage();
+}
+
+// admin approve/reject proof
+function adminApproveProof(orderId){
+  if (!requireAdminAction()) return;
+  const orders = getOrdersForUser();
+  const idx = orders.findIndex(o=>o.id===orderId);
+  if (idx === -1) return;
+  if (!confirm('Setujui bukti pembayaran dan tandai pesanan sebagai LUNAS?')) return;
+  orders[idx].paymentStatus = 'paid';
+  orders[idx].paymentProofStatus = 'approved';
+  orders[idx].paidAt = new Date().toISOString();
+  saveOrdersForUser(orders);
+  showToast('Bukti disetujui, pesanan ditandai LUNAS', 'success');
+  renderOrdersPage();
+}
+function adminRejectProof(orderId, note){
+  if (!requireAdminAction()) return;
+  const orders = getOrdersForUser();
+  const idx = orders.findIndex(o=>o.id===orderId);
+  if (idx === -1) return;
+  if (!confirm('Tolak bukti pembayaran?')) return;
+  orders[idx].paymentProofStatus = 'rejected';
+  orders[idx].paymentProofNote = note || '';
+  orders[idx].paymentStatus = 'pending'; // kembali menunggu pembayaran
+  saveOrdersForUser(orders);
+  showToast('Bukti ditolak', 'info');
+  renderOrdersPage();
+}
+
+// admin toggle paid/unpaid (simulasi)
+function adminTogglePaid(orderId){
+  if (!requireAdminAction()) return;
+  const orders = getOrdersForUser();
+  const idx = orders.findIndex(o=>o.id===orderId);
+  if (idx === -1) return;
+  if (orders[idx].paymentStatus === 'paid'){
+    if (!confirm('Batalkan tanda lunas untuk pesanan ini?')) return;
+    orders[idx].paymentStatus = 'pending';
+    delete orders[idx].paidAt;
+  } else {
+    if (!confirm('Tandai pesanan ini sebagai sudah dibayar?')) return;
+    orders[idx].paymentStatus = 'paid';
+    orders[idx].paidAt = new Date().toISOString();
+  }
+  saveOrdersForUser(orders);
+  showToast('Status pembayaran diperbarui', 'success');
+  renderOrdersPage();
+}
 
 // ---------------- admin page (products & users) ----------------
 function renderAdminProducts(){ if (!isManagerOrAdmin()){ showToast('Akses ditolak: hanya admin/manager', 'error'); window.location.href='index.html'; return; } const wrap = document.getElementById('admin-products'); if (!wrap) return; wrap.innerHTML = ''; getProducts().forEach(p=>{ const el = document.createElement('div'); el.className = 'admin-product'; const img = document.createElement('img'); img.src = p.image; img.alt = p.name; el.appendChild(img); const info = document.createElement('div'); info.style.flex = '1'; const title = document.createElement('div'); title.style.fontWeight = '700'; title.textContent = p.name; info.appendChild(title); const meta = document.createElement('div'); meta.textContent = `Rp${p.price.toLocaleString()} — Stok: ${p.stock}`; info.appendChild(meta); const desc = document.createElement('div'); desc.style.fontSize = '0.9em'; desc.style.color = '#556'; desc.textContent = p.description; info.appendChild(desc); el.appendChild(info); const actions = document.createElement('div'); actions.style.display='flex'; actions.style.flexDirection='column'; actions.style.gap='6px'; const editBtn = document.createElement('button'); editBtn.className='btn-primary'; editBtn.textContent='Edit'; editBtn.addEventListener('click', ()=> editProduct(p.id)); actions.appendChild(editBtn); const delBtn = document.createElement('button'); delBtn.className='btn-danger'; delBtn.textContent='Hapus'; delBtn.addEventListener('click', ()=> removeProduct(p.id)); actions.appendChild(delBtn); el.appendChild(actions); wrap.appendChild(el); }); }
@@ -570,3 +921,9 @@ window.setUserRole = setUserRole;
 window.deleteUserAdmin = deleteUserAdmin;
 window.exportUsers = exportUsers;
 window.importUsers = importUsers;
+window.confirmPayment = confirmPayment;
+window.adminTogglePaid = adminTogglePaid;
+window.adminApproveProof = adminApproveProof;
+window.adminRejectProof = adminRejectProof;
+window.uploadPaymentProof = uploadPaymentProof;
+window.showPaymentPreview = showPaymentPreview;
