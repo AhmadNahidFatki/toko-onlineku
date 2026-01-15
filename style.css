@@ -1,6 +1,6 @@
-/* Gabungan stylesheet untuk seluruh halaman (index, product, checkout, admin, auth, orders) */
+/* Combined stylesheet for all pages (index, product, checkout, admin, auth, orders) */
 
-/* Variabel global */
+/* Global variables */
 :root{
   --bg:#EFF2F8;
   --accent:#60aeb5;
@@ -10,7 +10,7 @@
   --card-shadow: rgba(30,60,60,0.08);
   --text:#274246;
 
-  /* tambahan */
+  /* additional */
   --radius: 10px;
   --gap: 16px;
   --container-max: 1100px;
