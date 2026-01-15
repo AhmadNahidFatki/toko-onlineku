@@ -2,23 +2,23 @@
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <title>Admin - Kelola Produk & Pengguna</title>
+  <title>Admin - Manage Products and Users</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
-    <h1><a href="index.html" class="site-title">Admin - Produk & Pengguna</a></h1>
+    <h1><a href="index.html" class="site-title">Admin - Products and Users</a></h1>
     <div class="header-actions">
       <span id="user-info"></span>
       <button id="login-btn">Login</button>
-      <a id="register-link" class="register-link" href="register.html">Daftar</a>
+      <a id="register-link" class="register-link" href="register.html">List</a>
     </div>
   </header>
 
   <main class="admin-page">
     <div class="admin-panel">
-      <h2>Tambah / Edit Produk</h2>
+      <h2>Add / Edit Product</h2>
       <input id="p-id" type="hidden" />
       <input id="p-name" placeholder="Nama produk" />
       <input id="p-price" placeholder="Harga (angka)" />
@@ -26,31 +26,31 @@
       <textarea id="p-desc" placeholder="Deskripsi produk"></textarea>
 
       <div>
-        <label>Gambar (file atau URL):</label>
+        <label>Image (file or URL):</label>
         <input id="p-image-file" type="file" accept="image/*" />
         <input id="p-image-url" placeholder="atau URL gambar" />
       </div>
 
       <div style="margin-top:8px">
-        <button onclick="saveProduct()" class="btn-primary">Simpan Produk</button>
+        <button onclick="saveProduct()" class="btn-primary">Save Product</button>
         <button onclick="resetProductForm()" class="btn-muted">Reset</button>
       </div>
 
-      <h3 style="margin-top:18px">Daftar Produk</h3>
+      <h3 style="margin-top:18px">Product List</h3>
       <div id="admin-products" class="admin-products"></div>
 
       <hr style="margin:18px 0">
 
-      <h2>Kelola Pengguna & Roles</h2>
-      <p style="color:#555; font-size:0.95em">Hanya admin dapat melihat dan mengubah pengguna. Manager dapat mengelola produk tetapi tidak pengguna.</p>
+      <h2>Manage Users & Roles</h2>
+      <p style="color:#555; font-size:0.95em">Only admins can view and modify users. Managers can manage products but not users.</p>
 
       <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
-        <button onclick="renderAdminUsers()" class="btn-primary">Refresh Daftar Pengguna</button>
+        <button onclick="renderAdminUsers()" class="btn-primary">Refresh User List</button>
         <button onclick="exportUsers()" class="btn-muted">Export Users (JSON)</button>
         <input id="import-users-file" type="file" accept=".json" style="display:inline-block" />
         <select id="import-mode">
           <option value="merge">Merge (overwrite existing usernames)</option>
-          <option value="replace">Replace semua users</option>
+          <option value="replace">Replace all users</option>
         </select>
         <button onclick="importUsers()" class="btn-primary">Import</button>
       </div>
@@ -60,7 +60,7 @@
   </main>
 
   <footer>
-    &copy; 2026 Toko Online Sederhana
+    &copy; 2026 simple shop
   </footer>
 
   <div id="toast" class="toast"></div>
