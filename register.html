@@ -1,36 +1,36 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Daftar - Toko Online Sederhana</title>
+  <title>Register - Simple Online Store</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
-    <h1><a href="index.html" class="site-title">Toko Online Sederhana</a></h1>
+    <h1><a href="index.html" class="site-title">Simple Online Store</a></h1>
     <div class="header-actions">
-      <a href="index.html" class="back-link">← Kembali ke Toko</a>
+      <a href="index.html" class="back-link">← Back to Store</a>
     </div>
   </header>
 
   <main class="auth-page">
     <div class="auth-card">
-      <h2>Daftar Akun</h2>
+      <h2>Create Account</h2>
       <input id="register-username" type="text" placeholder="Username" autocomplete="off">
-      <input id="register-password" type="password" placeholder="Password (min 6 karakter)">
-      <input id="register-password2" type="password" placeholder="Konfirmasi Password">
+      <input id="register-password" type="password" placeholder="Password (min 6 characters)">
+      <input id="register-password2" type="password" placeholder="Confirm Password">
       <div id="register-error" class="auth-error"></div>
       <div class="auth-actions">
-        <button onclick="performRegister()" class="btn-primary">Daftar & Login</button>
-        <button onclick="window.location.href='index.html'" class="btn-muted">Batal</button>
+        <button onclick="performRegister()" class="btn-primary">Register & Login</button>
+        <button onclick="window.location.href='index.html'" class="btn-muted">Cancel</button>
       </div>
-      <p class="hint">Sudah punya akun? <a href="login.html">Masuk di sini</a></p>
+      <p class="hint">Already have an account? <a href="login.html">Login here</a></p>
     </div>
   </main>
 
   <footer>
-    &copy; 2026 Toko Online Sederhana
+    &copy; 2026 Simple Online Store
   </footer>
 
   <div id="toast" class="toast"></div>
